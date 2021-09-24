@@ -218,15 +218,18 @@ psf4ensemble <- function(df, n = 24, predict = TRUE) {
 ensemble_psf <- function(df, niter = 5, predict = TRUE) {
   list_preds <- list()
   list_model <- list()
+  
+  sementes <- sample(1:1000, size = niter)
+    
   if (predict) {
     for (i in 1:niter) {
-      set.seed(i)
+      set.seed(sementes[i])
       list_preds[[i]] <- psf4ensemble(df)
     }
     return (list_preds)
   } else {
     for (i in 1:niter) {
-      set.seed(i)
+      set.seed(sementes[i])
       list_model[[i]] <- psf4ensemble(df, predict = FALSE)
     }
     return(list_model)
