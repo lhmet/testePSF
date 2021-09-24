@@ -72,13 +72,13 @@ apply_cmonth <- function(df, ndays_thresh = 28) {
   return(df)
 }
 
-#' Mantêm dados mensais que atendam ao limiar de observações válidas no ano
+#' Obtém os anos que atendam ao limiar de observações mensais válidas no ano
 #'  
 #' @param df um tibble ou data frame
 #' @param nmonths_thresh limiar que indica o número de observações mensais 
 #'  para captura dos anos
 #' 
-#' @return vetor com os anos que apresentam 12 meses de observações válidas
+#' @return vetor com os anos que apresentam `nmonths_thresh` meses de observações válidas
 #' 
 get_cyears <- function(df, nmonths_thresh = 12) {
   cyrs <- df %>%
@@ -90,17 +90,16 @@ get_cyears <- function(df, nmonths_thresh = 12) {
 }
 
 #' Filtragem dos dados com anos completos
+#' Mantêm os anos que atendam ao limiar de observações mensais válidas no ano
 #'  
-#' Usar depois de agrupar os dados caso selecionado mais de um posto
+#' @note Usar depois de agrupar os dados, caso selecionado mais de um posto
 #'  
-#'  @param df um tibble ou data frame
+#' @inheritParams get_cyears
 #'  
-#'  @param ndays_thresh  um inteiro
+#' @return df um tibble ou data frame com os meses completos
 #'  
-#'  @return df um tibble ou data frame com os meses completos
-#'  
-apply_cyears <- function(df) {
-  cyrs <- get_cyears(df)
+apply_cyears <- function(df, nmonths_thresh = 12) {
+  cyrs <- get_cyears(df, nmonths_thresh)
   df_cyrs <- df %>%
     filter(lubridate::year(date) %in% cyrs)
   return(df_cyrs)
