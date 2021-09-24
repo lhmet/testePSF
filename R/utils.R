@@ -109,13 +109,13 @@ apply_cyears <- function(df, nmonths_thresh = 12) {
 #'
 #' @param df data frame com série mensal dos dados de vazão
 #' 
-#' @param yrs número de anos que serão removidos das observações para teste do 
+#' @param n_years número de anos que serão removidos das observações para teste do 
 #' PSF.
 #' Valor pré-definido como 2 anos.
 #' 
-get_traindt <- function(df, yrs = 2) {
+get_traindt <- function(df, n_years = 2) {
   cyrs <- get_cyears(df)
-  leave_out <- tail(cyrs, n = yrs)
+  leave_out <- tail(cyrs, n = n_years)
   data <- df %>%
     filter(!lubridate::year(date) %in% leave_out)
   return(data)
