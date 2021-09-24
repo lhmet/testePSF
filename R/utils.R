@@ -49,11 +49,12 @@ sel_station <- function(df, station) {
     dplyr::filter(code_stn == station)
 }
 
-#' Filtra os meses completos dos dados
+#' Mantêm dados diários que atendam ao limiar de observações válidas no mês
 #' 
 #'  @param df um tibble ou data frame
 #'  
-#'  @param ndays_thresh  um inteiro
+#'  @param ndays_thresh  limiar que indica o número de observações diárias 
+#'  para captura de meses
 #'  
 #'  @return um tibble ou data frame com os meses completos
 #'  
@@ -71,17 +72,19 @@ apply_cmonth <- function(df, ndays_thresh = 28) {
   return(df)
 }
 
-#' Identifica anos completos, ou seja, com 12 meses de observações válidas
+#' Mantêm dados mensais que atendam ao limiar de observações válidas no ano
 #'  
 #' @param df um tibble ou data frame
+#' @param nmonths_thresh limiar que indica o número de observações mensais 
+#'  para captura dos anos
 #' 
 #' @return vetor com os anos que apresentam 12 meses de observações válidas
 #' 
-get_cyears <- function(df) {
+get_cyears <- function(df, nmonths_thresh = 12) {
   cyrs <- df %>%
     group_by(ano = lubridate::year(date)) %>%
     tally() %>%
-    filter(n == 12) %>%
+    filter(n == nmonths_thresh) %>%
     pull(ano)
   return(cyrs)
 }
