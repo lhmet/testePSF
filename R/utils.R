@@ -159,7 +159,8 @@ get_testdt <- function(df, n = 24) {
 #' 
 psf_reprod <- function(df, n = 24, predict = TRUE) {
   
-  set.seed(1) # p/ reprodutibilidade
+  # pode ser setado no script ou documento
+  #set.seed(1) # p/ reprodutibilidade
   
   model <- psf(df[, "qnat_obs"], cycle = 12)
   preds <- predict(model, n.ahead = n)
