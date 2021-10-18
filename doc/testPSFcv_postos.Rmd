@@ -11,6 +11,7 @@ editor_options:
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
+
 ## Objetivo 
 
 O objetivo do testePSF é realizar a aplicação do algoritmo PSF em séries hidrológicas e comparar o desempenho do algoritmo com outros métodos univariados amplamente usados para os dados das bacia hidrográficas da ONS. Neste arquivo aplicaremos a validação cruzada aos postos da ONS. A partir da validação cruzada esperamos obter uma avaliação robusta do desempenho do algoritmo PSF e também selecionar, a partir da busca de um padrão, os parâmetros ótimos.
