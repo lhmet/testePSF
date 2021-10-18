@@ -535,6 +535,7 @@ plot_pexc
 > - replicar gráfico da pexc com pontos coloridos para identificar o desempenho por região
 >
 > - fazer boxplot do KGE por região das BHs
+> - avaliar por lead time (1 a 12), verificar se decai KGE ou outro índice 
 
 
 

@@ -358,3 +358,14 @@ psf_cvparam <- function(df, n = 12, params = NULL) {
   )
   preds <- predict(model, n.ahead = n)
 }
+
+
+
+
+
+
+#EflowStats::get_waterYear
+
+
+
+

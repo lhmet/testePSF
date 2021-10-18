@@ -1,0 +1,638 @@
+---
+title: "Análise exploratória das assinaturas hidrológicas para bacias hidrográficas do SIN"
+author: "JDT"
+date: "24/05/2021"
+output: 
+  html_notebook: 
+    toc: yes
+editor_options: 
+  chunk_output_type: inline
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Pré-requisitos
+
+Pacotes necessários:
+
+```{r, message=FALSE, warning=FALSE}
+#if(!require(PSF)) install.packages("PSF")
+#if(!require(timetk)) remotes::install_github("business-science/timetk")
+if(!require(EflowStats)) remotes::install_github("USGS-R/EflowStats")
+
+
+pacotes <- c(
+  "here",
+  "usethis",
+  "data.table",
+  "HEobs",
+#  "PSF",
+  "tidyverse",
+  "lubridate",
+  "fs",
+  "checkmate",
+#  "xts",
+#  "hydroGOF",
+#  "ModelMetrics",
+#  "forecast",
+#  "timetk",
+  "EflowStats",
+  "hydrostats",
+  "NbClust",
+  "cluster",  
+  "cluster.datasets", 
+  "cowplot", 
+  "clValid",
+  "ggfortify", 
+  "clustree",
+  "dendextend",
+  "factoextra",
+  "FactoMineR",
+  "corrplot",
+  "GGally",
+  #"ggiraphExtra",
+  "kableExtra",
+  "tidymodels",
+  "bestNormalize",
+  "ggradar",
+  "ggpubr",
+  "baseflow"
+
+)
+# Carregar os pacotes
+easypackages::libraries(pacotes)
+```
+
+Scripts:
+
+```{r}
+source(here('R', 'load-data.R'))
+source(here('R', 'utils.R'))
+```
+
+
+## Dados 
+
+```{r}
+seven_stats_tidy <- readRDS(here("output", "seven_stats.RDS"))
+```
+
+
+## Exploração e visualização das assinaturas hidrológicas
+
+```{r}
+hydrosigns <- select(seven_stats_tidy, -code_stn)
+
+psych::describe(hydrosigns) %>% 
+  relocate(skew, kurtosis) %>%
+  kable() #%>%   kable_styling()
+```
+
+### Distribuição das assinaturas
+
+Dados brutos
+
+```{r}
+hydrosigns %>% 
+  pivot_longer(cols = everything(), names_to = "stats", values_to = "valor") %>%
+  ggplot(aes(x=valor)) +
+  geom_histogram(fill = "lightblue2", color = "black") + 
+  facet_wrap(~stats, scales = "free_x") +
+  labs(x = "Value", y = "Frequency") +
+  theme_bw()
+```
+
+Dados normalizados
+
+```{r}
+hydrosigns_scaled <- hydrosigns %>%
+  # normalizados pela media e desv padrao
+  #scale() %>% 
+  # normalizados entre -1 e 1
+  mutate_all(scales::rescale, to = c(-1, 1)) %>%
+  as_tibble() 
+
+
+hydrosigns_scaled_long <- hydrosigns_scaled %>%
+  pivot_longer(cols = everything(), names_to = "stats", values_to = "valor") 
+
+# hydrosigns_scaled_long %>%
+#   ggplot(aes(x=valor)) +
+#   geom_histogram(fill = "lightblue2", color = "black") + 
+#   facet_wrap(~stats) +
+#   labs(x = "Value", y = "Frequency") +
+#   theme_bw()
+```
+
+
+Distribuição dos dados normalizados 
+
+```{r}
+sel_stats <- c("tau2", "tau3", "tau4", "bfi")
+hydrosigns_scaled_long %>%
+  filter(stats %in% sel_stats) %>%
+ggdensity(
+          x = "valor",
+          add = "mean", 
+          rug = TRUE,
+          color = "stats", 
+          fill = "stats", alpha = 0.3
+          )
+hydrosigns_scaled_long %>%
+  filter(! stats %in% sel_stats) %>%
+ggdensity(
+          x = "valor",
+          add = "mean", 
+          rug = TRUE,
+          color = "stats", 
+          fill = "stats", alpha = 0.3
+          )
+```
+
+
+
+```{r}
+# boxplot
+hydrosigns_scaled %>%
+  pivot_longer(cols = everything(), names_to = "stats", values_to = "valor") %>%
+  ggplot(aes(x=valor, y = stats)) +
+  geom_boxplot(fill = "lightblue2", color = "black") +
+  #facet_wrap(~stats, ncol = 2) +
+  #labs(x = "Value", y = "Frequency") +
+  theme_bw()
+
+hydrosigns_scaled_long %>%
+  ggboxplot(x = "stats",
+            y = "valor",
+            color = "stats", 
+            #palette =c("#00AFBB", "#E7B800", "#FC4E07"),
+            add = "jitter", 
+            shape = "stats", 
+            size = 0.5 
+            ) #+  coord_flip()
+  
+
+ 
+```
+
+Distribuição das assinaturas após normalização dos dados.
+
+
+```{r, fig.align='center', fig.height=8, fig.width=6, include=FALSE}
+
+hs_n <- hydrosigns %>% 
+  pivot_longer(cols = everything(), names_to = "stats", values_to = "valor") %>%
+  arrange(stats) %>%
+  group_by(stats) %>%
+  nest() 
+
+hs_trans <- hs_n %>%
+  mutate(bn_obj = map(data, ~bestNormalize(.x$valor, allow_orderNorm = TRUE)),
+         trans = map(bn_obj, ~.x$x.t),
+         chosen_trans = map(bn_obj, ~attr(.x$chosen_transform, "class")[1]),
+         norm_stat = map(bn_obj, ~.x$norm_stats[which.min(.x$norm_stats)])
+         )
+
+hs_trans %>%
+  unnest(c("chosen_trans", "norm_stat"))
+  
+hydrosigns_trans <- hs_trans %>%
+  unnest(c("trans")) %>%
+  select(stats, trans) %>%
+  ungroup()
+
+hydrosigns_trans %>%
+  ggplot(aes(x=trans)) +
+  geom_histogram(fill = "lightblue2", color = "black") + 
+  facet_wrap(~stats, ncol = 2) +
+  labs(x = "Value", y = "Frequency") +
+  theme_bw()
+
+
+hydrosigns_trans_wide <- hydrosigns_trans %>%
+  pivot_wider(names_from = "stats", values_from = "trans", values_fn = list) %>%
+  unnest()
+```
+
+### Relação entre as assinaturas
+
+```{r, fig.width=8, fig.height=8, fig.align='center', message=FALSE, warning=FALSE, results='hide'}
+data_plot <- hydrosigns_scaled
+
+M <- cor(data_plot)
+
+M %>%
+  corrplot(type = "upper",
+           method = "ellipse", 
+           tl.cex = 0.9
+           )
+
+alpha <- 0.05
+res <- corrplot::cor.mtest(
+   data_plot,
+   conf.level = 1-alpha
+   )
+ 
+ corrplot::corrplot(M,
+                    p.mat = res$p,
+                    method = "color", 
+                    type = "upper",
+                    sig.level = c(.001, 0.01, alpha),
+                    pch.cex = 1.2,
+                    insig = "label_sig",
+                    pch.col = "green"
+                    #order = "AOE"
+                    )
+ggpairs(data_plot) + theme_bw()
+```
+
+
+### Redução das dimensões
+
+```{r}
+data_pca <- hydrosigns_scaled
+res.pca <- PCA(data_pca,  graph = FALSE)# Visualize eigenvalues/variances
+fviz_screeplot(res.pca, addlabels = TRUE)
+
+```
+
+
+```{r, fig.width=8, fig.height=8, fig.align='center'}
+var <- get_pca_var(res.pca)# Contributions of variables to PC1
+c_pc1 <- fviz_contrib(res.pca, choice = "var", axes = 1, top = 10)# Contributions of variables to PC2
+c_pc2 <- fviz_contrib(res.pca, choice = "var", axes = 2, top = 10)# Control variable colors using their contributions to the principle axis
+
+vec_pcs <- fviz_pca_var(res.pca, col.var="contrib",
+             gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"),
+             repel = TRUE # Avoid text overlapping
+             ) + 
+  theme_minimal() + 
+  ggtitle("Variables - PCA")
+
+
+cowplot::plot_grid(c_pc1, c_pc2, vec_pcs, align = "v")
+
+```
+
+
+
+## Análise de agrupamento
+
+
+### K-means
+
+Testando diferentes escolhas para o número de clusters.
+
+```{r}
+data_km <- hydrosigns_scaled
+kclusts <- 
+  tibble(k = 1:20) %>%
+  mutate(
+    #kclust = map(k, ~kmeans(hydrosigns_trans_wide, .x)),
+    kclust = map(k, ~kmeans(data_km, .x)),
+    tidied = map(kclust, tidy),
+    glanced = map(kclust, glance),
+    #augmented = map(kclust, augment, hydrosigns_trans_wide)
+    augmented = map(kclust, augment, data_km)
+  )
+kclusts
+```
+
+
+```{r}
+clusters <- 
+  kclusts %>%
+  unnest(cols = c(tidied))
+
+assignments <- 
+  kclusts %>% 
+  unnest(cols = c(augmented))
+
+clusterings <- 
+  kclusts %>%
+  unnest(cols = c(glanced))
+```
+
+
+
+```{r, include = FALSE}
+stats_sel <- c("lam1", "phase", "tau4", "amplitude")
+tab_stats_rel <- combn(stats_sel, m = 2) %>%
+  t() %>%
+  data.frame() %>%
+  set_names(nm = c("x", "y"))
+
+plts_klust <-
+  map(
+    1:nrow(tab_stats_rel),
+    function(ir) {
+      # ir = 1
+      vnames <- c(t(tab_stats_rel[ir, c("x", "y")]))
+      ds <- select(assignments, k, .cluster, one_of(vnames))
+      x <- vnames[1]; y <- vnames[2]
+      ggplot(ds, aes(.data[[x]], .data[[y]])) +
+        geom_point(aes(color = .cluster), alpha = 0.8) +
+        facet_wrap(~k) + 
+        geom_point(data = clusters,size = 8, shape = "x")
+      
+    }
+  )
+plts_klust
+
+
+```
+
+```{r, fig.width=10, fig.height=12, fig.align='center'}
+plts_klust2 <-
+  map(kclusts$k,
+    function(ik) {
+      # ik = 3
+      fviz_cluster(kclusts[["kclust"]][[ik]],
+                   data = data_km, 
+                   show.clust.cent = TRUE,
+                   ellipse.type = "convex", 
+                   pointsize = 0.8) + 
+       theme_bw() + 
+        ggtitle(paste0("k = ", ik)) +
+        coord_equal()
+    }
+  )
+
+cowplot::plot_grid(plotlist = plts_klust2[1:10], ncol = 3)
+
+```
+
+
+
+```{r}
+ggplot(clusterings, aes(k, tot.withinss)) +
+  geom_line() +
+  geom_point()
+```
+
+
+```{r}
+
+
+# seven_stats_wide <- seven_stats_tidy %>%
+#   pivot_wider(names_from = code_stn, values_from = statistic)
+# seven_stats_wide
+
+diss_matrix<- dist(data_km, method = "euclidean", diag=FALSE)
+clust_ana <- NbClust(data_km, 
+        diss=diss_matrix,
+        distance = NULL, 
+        min.nc=2, 
+        max.nc=24, 
+        method = "ward.D2",
+        index = "all")
+clust_ana
+```
+
+
+## Nº ótimo de clusters
+
+### Método 'Elbow'
+
+```{r}
+set.seed(31)
+# function to compute total within-cluster sum of squares
+fviz_nbclust(hydrosigns_scaled,
+  kmeans,
+  method = "wss",
+  k.max = 24
+) +
+  theme_bw() +
+  ggtitle("the Elbow Method")
+```
+
+### Estatística GAP
+
+
+```{r}
+gap_stat <- clusGap(hydrosigns_scaled, 
+                    FUN = kmeans, 
+                    nstart = 30, 
+                    K.max = 24, 
+                    B = 50)
+fviz_gap_stat(gap_stat) + 
+  theme_bw() + 
+  ggtitle("fviz_gap_stat: Gap Statistic")
+
+```
+
+
+### Método silhueta
+
+
+```{r}
+fviz_nbclust(hydrosigns_scaled, 
+             kmeans, 
+             method = "silhouette", 
+             k.max = 24) + 
+  theme_minimal() + 
+  ggtitle("The Silhouette Plot")
+```
+
+### Método das somas quadráticas
+
+```{r}
+kclusts_ss <- mutate(kclusts,
+    within_ss = map_dbl(k, ~mean(kclusts[["kclust"]][[.x]][["withinss"]])),   
+    between_ss = map_dbl(k, ~mean(kclusts[["kclust"]][[.x]][["betweenss"]]))
+    ) %>%
+  select(k, contains("_ss"))
+
+kclusts_ss_long <-  kclusts_ss %>%
+  pivot_longer(cols = -k, names_to = "measure", values_to = "valor")
+
+kclusts_ss_long %>% 
+  filter(k > 1) %>%
+  ggplot(., aes(x=k, y=log10(valor), fill = measure)) + 
+  geom_bar(stat = "identity", position = "dodge") + 
+  ggtitle("Cluster Model Comparison") + 
+  xlab("Number of Clusters") + 
+  ylab("Log10 Total Sum of Squares")  
+  #scale_x_discrete(name = "Number of Clusters", limits = c("0", "2", "3", "4", "5", "6", "7", "8"))
+```
+
+### NbClust
+
+O pacote `NbClust` fornece 30 índices para determinar o o número relevante de clusters propõ ao usuário o melfor esquema de agrupamento dos diferentes resultados obtidos da variação de todas combinações de nº de cluesters, medidas de distância e métodos de agrupamentos.
+
+```{r}
+nbc_scaled <- NbClust(hydrosigns_scaled, 
+                      distance = "euclidean",
+                      min.nc = 2, 
+                      max.nc = 25, 
+                      #method = "complete", 
+                      method = "ward.D2",
+                      index ="all"
+                      )
+
+factoextra::fviz_nbclust(nbc_scaled) + 
+  theme_bw() + 
+  ggtitle("NbClust's optimal number of clusters")
+```
+
+
+```{r}
+nbc_scaled2 <- NbClust(hydrosigns_scaled,
+  distance = "euclidean",
+  min.nc = 2,
+  max.nc = 10,
+  method = "complete",
+  index = "all"
+)
+
+factoextra::fviz_nbclust(nbc_scaled2) +
+  theme_bw() +
+  ggtitle("NbClust's optimal number of clusters")
+```
+
+
+
+### Clustree
+
+```{r, fig.height=9, fig.width=7}
+tmp <- NULL
+for (k in 1:15){
+  tmp[k] <- kmeans(hydrosigns_scaled, k, nstart = 30)
+}
+df <- data.frame(tmp)# add a prefix to the column names
+colnames(df) <- seq(1:15)
+colnames(df) <- paste0("k", colnames(df))# get individual PCA
+df.pca <- prcomp(df, center = TRUE, scale. = FALSE)
+ind.coord <- df.pca$x
+ind.coord <- ind.coord[,1:2]
+df <- bind_cols(as.data.frame(df), as.data.frame(ind.coord))
+clustree(df, prefix = "k")
+```
+
+
+
+## Escolha do algoritmo apropriado
+
+
+```{r}
+tmp <- as.data.frame(hydrosigns_scaled) 
+rownames(tmp) <- seven_stats_tidy$code_stn
+intern <- clValid(tmp, 
+                  nClust = 2:24, 
+                  clMethods = c("hierarchical","kmeans","pam"), 
+                  validation = "internal")# Summary
+summary(intern) %>% kable() %>% kable_styling()
+```
+
+
+```{r}
+# Compute dissimilarity matrix with euclidean distances
+d <- dist(hydrosigns_scaled, method = "euclidean")# Hierarchical clustering using Ward's method
+res.hc <- hclust(d, method = "ward.D2" )# Cut tree into 5 groups
+grp <- cutree(res.hc, k = 2)# Visualize
+plot(res.hc, cex = 0.6) # plot tree
+rect.hclust(res.hc, k = 2, border = 2:5) # add rectangle
+```
+
+```{r}
+res.hc2 <- hclust(d, method = "complete" )# Cut tree into 5 groups
+grp <- cutree(res.hc2, k = 3)# Visualize
+plot(res.hc2, cex = 0.6) # plot tree
+rect.hclust(res.hc2, k = 3, border = 2:6) # add rectangle
+```
+```{r}
+# Execution of k-means with k=5
+final2 <- kmeans(hydrosigns_scaled, 2, nstart = 30)
+fviz_cluster(final2, data = hydrosigns_scaled) + theme_bw() + ggtitle("k = 2")
+final4 <- kmeans(hydrosigns_scaled, 4, nstart = 30)
+fviz_cluster(final4, data = hydrosigns_scaled) + theme_bw() + ggtitle("k = 4")
+```
+
+```{r}
+as.data.frame(seven_stats_tidy) %>%
+  mutate(Cluster = nbc_scaled$Best.partition) %>% 
+  group_by(Cluster) %>% 
+  summarise_all("mean") %>%
+  kable() 
+```
+
+```{r, fig.width=9, fig.height=9}
+
+hydrosigns_df <- as.data.frame(hydrosigns_scaled) %>% 
+  mutate(code_stn = seven_stats_tidy$code_stn)
+
+cluster_pos <- as.data.frame(nbc_scaled$Best.partition) %>% 
+  mutate(code_stn = seven_stats_tidy$code_stn)
+colnames(cluster_pos) <- c("cluster", "code_stn")
+
+hydrosigns_final <- inner_join(cluster_pos, hydrosigns_df) %>%
+  mutate(cluster = factor(cluster))
+
+hydrosigns_radar <- hydrosigns_final %>%
+  select(-code_stn) %>%
+  group_by(cluster) %>%
+  mutate_at(vars(-cluster), scales::rescale) %>%
+  summarise_all(.funs = mean) %>%
+  ungroup() 
+
+hydrosigns_radar %>%
+  ggradar(
+    font.radar = "roboto",
+    grid.label.size = 10,  # Affects the grid annotations (0%, 50%, etc.)
+    axis.label.size = 6.5, # Afftects the names of the variables
+    group.point.size = 2   # Simply the size of the point 
+  )
+
+table(hydrosigns_final$cluster)
+ggpairs(hydrosigns_final, 
+        columns = 3:ncol(hydrosigns_final), 
+        mapping = aes(color = factor(cluster), alpha = 0.5), 
+        diag = list(continuous = wrap("densityDiag")), 
+        lower=list(continuous = wrap("points", alpha=0.9)))
+
+```
+
+
+
+```{r, fig.height=7, fig.width=8}
+# Parallel coordiante plots allow us to put each feature on seperate column and lines connecting each column
+ggparcoord(data = hydrosigns_final,
+           columns = 3:9,
+           groupColumn = 1, 
+           alphaLines = 0.4, 
+           title = "Parallel Coordinate Plot for the HydroSigns", 
+           scale = "globalminmax", 
+           showPoints = TRUE, ) + 
+  theme(legend.position = "bottom")
+
+
+```
+
+
+```{r}
+hydrosigns_final %>%
+  pivot_longer(cols = -(cluster:code_stn), 
+               names_to = "stats", 
+               values_to = "valor") %>%
+  ggplot(aes(x=cluster, y = valor)) +
+  geom_boxplot(aes(fill = stats), color = "black") + 
+  #coord_flip() +
+  #facet_wrap(~stats, ncol = 2) +
+  #labs(x = "Value", y = "Frequency") +
+  theme_bw()
+```
+
+
+
+## Refs
+
+https://towardsdatascience.com/10-tips-for-choosing-the-optimal-number-of-clusters-277e93d72d92
+
+https://www.tidymodels.org/learn/statistics/k-means/
+
+https://www.r-graph-gallery.com/web-radar-chart-with-R.html
+
+
+

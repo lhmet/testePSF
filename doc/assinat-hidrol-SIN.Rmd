@@ -1,0 +1,217 @@
+---
+title: "Assinaturas hidrológicas para bacias hidrográficas do SIN"
+author: "JDT"
+date: "24/05/2021"
+output: 
+  html_document: 
+    toc: yes
+  html_notebook: 
+    toc: yes
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Pré-requisitos
+
+Pacotes necessários:
+
+```{r, message=FALSE}
+#if(!require(PSF)) install.packages("PSF")
+#if(!require(timetk)) remotes::install_github("business-science/timetk")
+if(!require(EflowStats)) remotes::install_github("USGS-R/EflowStats")
+
+
+pacotes <- c(
+  "here",
+  "usethis",
+  "data.table",
+  "HEobs",
+#  "PSF",
+  "tidyverse",
+  "lubridate",
+  "fs",
+  "checkmate",
+#  "xts",
+#  "hydroGOF",
+#  "ModelMetrics",
+#  "forecast",
+#  "timetk",
+  "EflowStats",
+  "hydrostats",
+ #"NbClust",
+ #  "cluster",  
+ #  "cluster.datasets", 
+  "cowplot", 
+  # "clValid",
+  "ggfortify", 
+  #"clustree",
+  #"dendextend",
+  #"factoextra",
+  #"FactoMineR",
+  #"corrplot",
+  #"GGally",
+  #"ggiraphExtra",
+  "kableExtra",
+  "tidymodels",
+  "fasstr"
+)
+# Carregar os pacotes
+easypackages::libraries(pacotes)
+```
+
+Scripts:
+
+```{r}
+source(here('R', 'load-data.R'))
+source(here('R', 'utils.R'))
+source(here('R', 'prep-stn-data.R'))
+```
+
+## Dados de vazão
+
+Os dados importados de vazão devem ser regularmente espaçados no tempo. Esta adequação das séries diárias, se necessária, pode ser realizada com a função `complete_dates()` do pacote **`{lhmetools}`**. Assim assegura-se que todas estações possuam 1 observação por dia e sem datas faltantes.
+
+
+Metadados
+
+```{r}
+data_link <- "https://www.dropbox.com/s/d40adhw66uwueet/VazoesNaturaisONS_D_87UHEsDirceuAssis_2018.dat?dl=1"
+qnat_meta <- extract_metadata(NA_character_, informative = TRUE)
+glimpse(qnat_meta)
+```
+
+
+Dados
+
+```{r}
+qnat_data <- qnat_dly_ons() %>%
+  select(date, qnat, code_stn) %>%
+  lhmetools::complete_dates(group = "code_stn")
+glimpse(qnat_data)
+
+# Incluindo nome da estacao
+qnat_data <- qnat_data %>%
+  full_join(select(qnat_meta, estacao_codigo, nome_estacao),
+            by = c(code_stn = "estacao_codigo")
+            ) %>%
+  rename("name_stn" = nome_estacao)
+```
+
+## Assinaturas hidrológicas para 1 posto
+
+
+
+
+Preparação dos dados para aplicação da função `calc_magnifSeven` com a opção de ano hidrológico (**water year**) para o posto 74 da ONS (G. B. Munhoz).
+
+```{r}
+qnat_posto <- qnat_data %>% 
+  sel_station(.,station = 74)  
+glimpse(qnat_posto)
+summary(qnat_posto)
+
+magnif7(stn_data = select(qnat_posto, date, qnat))
+```
+
+
+## Dados agrupados por postos
+
+
+
+```{r}
+by_stn <- qnat_data %>% 
+  group_by(code_stn) %>%
+  nest()
+
+```
+
+
+Fazer plot da sazonalidade da fração de vazão anual.
+
+
+```{r}
+# glimpse(by_stn[["data"]][[1]])
+
+by_stn %>%
+  unnest(cols = "data") %>%
+  group_by(code_stn, month = lubridate::month(date)) %>%
+  select(-name_stn) %>%
+  summarise(q_med = mean(qnat, na.rm = TRUE)) %>%
+  
+  
+
+```
+
+
+
+## Testando fasstr
+
+https://bcgov.github.io/fasstr/articles/fasstr.html
+
+Será relevante considerar a diferenças nos períodos dos anos hidrológicos por posto?
+
+```{r, include = FALSE}
+
+check_season_plots <- qnat_data %>%
+  rename("Date" = date) %>%
+  plot_daily_stats(
+    values = "qnat",
+    groups = "code_stn",
+    start_year = 1991,
+    end_year = 2010,
+    log_discharge = TRUE,
+    add_year = 2001, 
+    complete_years = TRUE, 
+    include_title = TRUE
+  )
+
+
+```
+
+
+```{r, include = FALSE}
+codes <- names(check_season_plots) %>%
+  readr::parse_number()
+
+lookup <- qnat_data %>% 
+  select(contains("stn")) %>% 
+  distinct() %>%
+  slice(order(codes)) %>%
+  arrange(code_stn)
+
+plot_l <- map(seq_along(codes), 
+    function(i) {
+      # i = 1
+      nm <- filter(lookup, code_stn == codes[i]) %>%
+        pull(name_stn)
+      check_season_plots[[i]] + ggtitle(paste0("Posto: ", nm))
+    })
+plot_l
+```
+
+## Assinaturas hidrológicas para todos postos
+
+
+
+```{r}
+seven_stats <- by_stn %>%
+  ungroup() %>%
+  mutate(stats = map(data, ~.x %>% select(date, qnat) %>%magnif7))
+```
+
+
+
+```{r}
+seven_stats_tidy <- seven_stats %>%
+  select(stats) %>%
+  unnest() %>%
+  pivot_wider(names_from = indice, values_from = statistic) %>%
+  ungroup()
+seven_stats_tidy
+saveRDS(seven_stats_tidy, file = here("output", "seven_stats.RDS"))
+```
+
