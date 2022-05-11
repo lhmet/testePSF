@@ -634,5 +634,8 @@ https://www.tidymodels.org/learn/statistics/k-means/
 
 https://www.r-graph-gallery.com/web-radar-chart-with-R.html
 
+> a testar
 
+https://www.datanovia.com/en/lessons/heatmap-in-r-static-and-interactive-visualization/#:~:text=A%20heatmap%20(or%20heat%20map,clusters%20of%20samples%20and%20features.
 
+https://slcladal.github.io/clust.html
