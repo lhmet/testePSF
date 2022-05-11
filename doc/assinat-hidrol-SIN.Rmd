@@ -8,7 +8,7 @@ output:
   html_notebook: 
     toc: yes
 editor_options: 
-  chunk_output_type: console
+  chunk_output_type: inline
 ---
 
 ```{r setup, include=FALSE}
@@ -130,22 +130,149 @@ by_stn <- qnat_data %>%
 ```
 
 
-Fazer plot da sazonalidade da fração de vazão anual.
+### Gráfico da sazonalidade da fração de vazão anual.
 
+Fração mensal da vazão anual
 
 ```{r}
+# https://jcoliver.github.io/learn-r/008-ggplot-dendrograms-and-heatmaps.html
 # glimpse(by_stn[["data"]][[1]])
 
-by_stn %>%
+q_mon_clim <- by_stn %>%
   unnest(cols = "data") %>%
   group_by(code_stn, month = lubridate::month(date)) %>%
   select(-name_stn) %>%
-  summarise(q_med = mean(qnat, na.rm = TRUE)) %>%
+  summarise(q_med = mean(qnat, na.rm = TRUE))
+
+q_ann_clim <- q_mon_clim %>%
+  summarise(q_tot = sum(q_med))
+
+q_mon_clim <- q_mon_clim %>% 
+  full_join(q_ann_clim) %>%
+  mutate(q_frac = q_med/q_tot * 100) %>%
+  ungroup() %>%  
+  mutate(code_stn = as.factor(code_stn),
+         month = as.factor(month))
   
+psych::describe(q_mon_clim) %>% 
+  relocate(skew, kurtosis)
+```
+
+
+Agrupamento dos postos
+
+```{r}
+qlong <- select(q_mon_clim, code_stn, month, q_frac) %>%
+  pivot_wider(names_from = "month", 
+              values_from = "q_frac",
+              names_prefix = "qfrac_"
+              )
+qlong_scaled <- qlong 
+qlong_scaled[,-1] <- scale(qlong_scaled[,-1])
+
+# Run clustering
+qmat <- as.matrix(qlong_scaled[, -1])
+rownames(qmat) <- qlong_scaled$code_stn
+
+clustd <- dist(x = qmat)
+cd <- hclust(d = clustd, method="ward.D2")
+#cd <- hclust(d = dist(x = qmat))
+# optclus <- sapply(2:20, 
+#                    function(i) 
+#                      summary(cluster::silhouette(cutree(cd, k = i), clustd))$avg.width
+#                    )
+# optclus
+# which.max(optclus) # 2
+q_dendro <- as.dendrogram(cd)
+
+# Create dendro
+dendro_plot <- ggdendro::ggdendrogram(data = q_dendro, rotate = TRUE)+
+   theme(axis.text.y = element_text(size = 8))
+
+# Preview the plot
+dendro_plot
+
+# linhas da ordem dos postos
+q_order <- order.dendrogram(q_dendro)
+# ordem dos postos
+as.integer(as.vector(qlong_scaled$code_stn[q_order]))
+```
+
+Heat map da fração mensal da vazão anual com postos ordenados pelo agrupamento.
+
+```{r}
+q_mon_clim_trans <-  q_mon_clim %>%
+  mutate(code_stn = factor(x = code_stn,
+                               levels = qlong_scaled$code_stn[q_order], 
+                               ordered = TRUE),
+         q_frac = round((q_frac/2))*2
+         )
+
+# cbind(t = q_mon_clim_trans$q_frac, o = q_mon_clim$q_frac)
+cols <- c("firebrick1", "lightpink3", "lightsteelblue3", 
+          "cadetblue1", "cornflowerblue","blue", "navyblue")
+
+q_mon_clim_trans %>%
   
+  ggplot(aes(x = month, y = code_stn)) +
+  geom_tile(aes(fill = q_frac), colour = "white") +
+  #geom_tile(aes(fill = factor(q_frac)), colour = "white") +
+  scale_x_discrete(expand = c(0,0)) +
+  theme_bw() +
+  #scale_fill_viridis_c()
+  #scale_fill_viridis_c(guide = "legend")
+  scale_fill_gradientn( "Vazão (% da média anual)",
+                       colours = cols,
+                       #guide = "legend",
+                       breaks = seq(0, 20, by = 2)
+                       ) +
+  #scale_fill_manual(values = cols) +
+  theme(legend.title = element_text(angle = 90, vjust = 1),
+        legend.key.height = unit(1.5, units = "cm")
+        )
+
+    # scale_fill_distiller(
+    #                      palette='RdYlBu', 
+    #                      direction = 1,
+    #                      breaks = seq(0, 20, by = 2),
+    #                      #guide = "legend"
+    #                     )
+  
+
 
 ```
 
+```{r, fig.height=8, fig.width=8}
+library(heatmaply)
+index_cols <- c(8:12, 1:7) + 1
+qdata <- as.data.frame(qlong[, index_cols])
+names(qdata) <- tolower(month.abb[index_cols-1])
+
+lut_postos <- qnat_data %>% 
+  select(contains("stn")) %>% 
+  distinct() 
+postos <- lut_postos$name_stn
+postos <- setNames(postos, lut_postos$code_stn)
+  
+rownames(qdata) <- postos[as.character(qlong$code_stn)]
+
+heatmaply(qdata, 
+          k_row = 4, 
+          Colv = FALSE,
+          #k_col = 3, 
+          #scale = "column"
+          scale_fill_gradient_fun = scale_fill_gradientn( "Vazão \n (% da média anual)",
+                       colours = cols,
+                       #guide = "legend",
+                       breaks = seq(0, 20, by = 2)
+                       ),
+          fontsize_row = 6
+          #seriate = "mean",
+          #seriate = "OLO"
+          #seriate = "GW"
+          #seriate = "none"
+          )
+```
 
 
 ## Testando fasstr
@@ -154,11 +281,11 @@ https://bcgov.github.io/fasstr/articles/fasstr.html
 
 Será relevante considerar a diferenças nos períodos dos anos hidrológicos por posto?
 
-```{r, include = FALSE}
+```{r, eval = FALSE}
 
 check_season_plots <- qnat_data %>%
   rename("Date" = date) %>%
-  plot_daily_stats(
+  fasstr::plot_daily_stats(
     values = "qnat",
     groups = "code_stn",
     start_year = 1991,
@@ -173,7 +300,7 @@ check_season_plots <- qnat_data %>%
 ```
 
 
-```{r, include = FALSE}
+```{r, eval = FALSE}
 codes <- names(check_season_plots) %>%
   readr::parse_number()
 
@@ -199,8 +326,8 @@ plot_l
 
 ```{r}
 seven_stats <- by_stn %>%
-  ungroup() %>%
-  mutate(stats = map(data, ~.x %>% select(date, qnat) %>%magnif7))
+  #ungroup() %>%
+  mutate(stats = purrr::map(data, ~.x %>% select(date, qnat) %>% magnif7))
 ```
 
 
@@ -208,7 +335,7 @@ seven_stats <- by_stn %>%
 ```{r}
 seven_stats_tidy <- seven_stats %>%
   select(stats) %>%
-  unnest() %>%
+  unnest(cols = "stats") %>%
   pivot_wider(names_from = indice, values_from = statistic) %>%
   ungroup()
 seven_stats_tidy
