@@ -123,11 +123,11 @@ magnif7 <- function(stn_data) {
     as.data.frame() %>%
     calc_magnifSeven(yearType = "water", digits = 3) %>%
     #mutate(code_stn = stn_data$code_stn[1]) %>%
-    as_tibble() #%>%
+    tibble::as_tibble() #%>%
   #dplyr::relocate(code_stn)
   
   # agregando assinaturas
-  bind_rows(mag7, tibble(indice = "bfi",
+  bind_rows(mag7, tibble::tibble(indice = "bfi",
                          statistic = baseflow_index(stn_data)
                          )
   )
