@@ -266,7 +266,8 @@ heatmaply(qdata,
                        #guide = "legend",
                        breaks = seq(0, 20, by = 2)
                        ),
-          fontsize_row = 6
+          fontsize_row = 6,
+          hclust_method = "ward.D2"
           #seriate = "mean",
           #seriate = "OLO"
           #seriate = "GW"
